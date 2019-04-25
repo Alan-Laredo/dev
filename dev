@@ -1,0 +1,189 @@
+#!/bin/sh
+# Description
+
+### DEFAULTS: ###
+
+declare DEV_DIR=
+declare DEV_MIN=
+declare DEV_MAX=
+declare DEV_TERMS_WS=
+declare PROJECT=
+
+[[ -z "$DEV_DIR" ]] && DEV_DIR="$HOME/Dev"
+[[ -z "$DEV_MIN" ]] && DEV_MIN="1"
+[[ -z "$DEV_MAX" ]] && DEV_MAX="2"
+[[ -z "$DEV_TERMS_WS" ]] && DEV_TERMS_WS="2"
+
+### FUNCTIONS ###
+
+error() { printf "error: %s\\n" "$1"; exit 1;}
+
+help() {
+	printf "\
+usage: git [--version] [--help] [-C <path>] [-c <name>=<value>]
+	[--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]
+	[-p | --paginate | -P | --no-pager] [--no-replace-objects] [--bare]
+	[--git-dir=<path>] [--work-tree=<path>] [--namespace=<name>]
+	<command> [<args>]
+
+These are common Git commands used in various situations:
+
+start a working area (see also: git help tutorial)
+	clone      Clone a repository into a new directory
+	init       Create an empty Git repository or reinitialize an existing one
+
+work on the current change (see also: git help everyday)
+	add        Add file contents to the index
+	mv         Move or rename a file, a directory, or a symlink
+	reset      Reset current HEAD to the specified state
+	rm         Remove files from the working tree and from the index
+
+examine the history and state (see also: git help revisions)
+	bisect     Use binary search to find the commit that introduced a bug
+	grep       Print lines matching a pattern
+	log        Show commit logs
+	show       Show various types of objects
+	status     Show the working tree status
+
+grow, mark and tweak your common history
+	branch     List, create, or delete branches
+	checkout   Switch branches or restore working tree files
+	commit     Record changes to the repository
+	diff       Show changes between commits, commit and working tree, etc
+	merge      Join two or more development histories together
+	rebase     Reapply commits on top of another base tip
+	tag        Create, list, delete or verify a tag object signed with GPG
+
+collaborate (see also: git help workflows)
+	fetch      Download objects and refs from another repository
+	pull       Fetch from and integrate with another repository or a local branch
+	push       Update remote refs along with associated objects
+
+'git help -a' and 'git help -g' list available subcommands and some
+concept guides. See 'git help <command>' or 'git help <concept>'
+to read about a specific subcommand or concept.\\n
+"
+}
+
+choseproject() {
+
+	# DEFAULTS
+	PROJECT=""
+
+	SELECTED="$(ask "chose project" "$(echo "$PROJECTS" | sed "s,$DEV_DIR,,g")")"
+	for SELECTED in $SELECTED
+	do
+		PROJECT+="${DEV_DIR}${SELECTED} "
+	done
+}
+
+## PROJECTS ##
+projects() {
+
+	# DEFAULTS
+	PRINT=false
+
+	# FLAGS
+	while true; do case "$1" in
+		-d | --directory) DEV_DIR=$2; shift 2 ;;
+		-m | --min) DEV_MIN=$2; shift 2 ;;
+		-M | --max) DEV_MAX=$2; shift 2 ;;
+		-p | --print) PRINT=true; shift ;;
+		*) break ;;
+	esac done
+
+	PROJECTS=$(find "$DEV_DIR" \
+		-mindepth "$DEV_MIN" -maxdepth "$DEV_MAX" \
+		-type d -printf '%d%p\n' | grep -v "$DEV_MIN" | sed "s/$DEV_MAX//")
+	[[ $PROJECTS = '' ]] && return 1
+	[[ "$PRINT" = true ]] && printf "$PROJECTS\\n" || return 0
+}
+
+terminals() {
+
+	# DEFAULTS
+	NESTED_DIRECTORIES=""
+
+	# FLAGS
+	while true; do case "$1" in
+		-d | --directory) DEV_DIR=$2; shift 2 ;;
+		-p | --project) PROJECT=$2; shift 2 ;;
+		-w | --workspace) DEV_TERMS_WS=$2; shift 2 ;;
+		*) break ;;
+	esac done
+
+	# prompts to select a project from ~/Dev
+	if [[ -z $PROJECT ]]; then
+		projects || error "unable to get projects from $DEV_DIR"
+		choseproject || error "unable to set $CHOSEN as project" "1"
+	fi
+
+	i3-msg workspace "$DEV_TERMS_WS" \
+		|| error "unable to switch to workspace $DEV_TERMS_WS" "1"
+	#setgaps 10 0 &>/dev/null
+
+	for PROJECT in $PROJECT; do
+		NESTED_DIRECTORIES+="$(find "$PROJECT" \
+			-maxdepth 2 -type d -name "src" | sed 's/\/src//') "
+	done
+	for DIR in ${NESTED_DIRECTORIES}; do
+		DIRName=$(find "${DIR}" -maxdepth 0 -printf "%f\n")
+		cd "${DIR}"
+		scripts=$(getscripts "${DIR}")
+		command=$(ask "command to run on ${DIRName}" "${scripts}")
+		st -e $(echo "npm run $command") &>/dev/null &
+		st &>/dev/null &
+	done
+	sleep 5s && i3-msg workspace back_and_forth
+}
+
+start() {
+
+	# FLAGS
+	while true; do case "$1" in
+		-t | --terminals) DEV_TERMS_WS=$2; shift 2 ;;
+		-p | --project) PROJECT=$2; shift 2 ;;
+		*) break ;;
+	esac done
+
+	# prompts to select a project from ~/Dev
+	projects || error "unable to get projects from $DEV_DIR"
+
+	# prompts to select a project from ~/Dev
+	if [[ -z $PROJECT ]]; then
+		choseproject || error "unable to set $CHOSEN as project" "1"
+	fi
+
+	# start init processes in a terminal
+	terminals -p "$PROJECT" || error "unable to launch terminals"
+
+	# initializes code and a mobile instance of the project
+	#i3-msg workspace $(ask "Open editor in workspace:" "") 2>/dev/null
+	#i3-msg layout tabbed
+	#setgaps 0 0 2>/dev/null
+	#code ${selectedProject} &
+	#ipAddress=$(ip addr | grep dynamic | awk '{print $2}')
+	#ipAddresses=$(ask "ip addr" "$(getaddresses)" "localhost")
+	#ipPort=$(ask "ip port" $(getports))
+	#chromium --incognito http://${ipAddresses}:${ipPort} 2>/dev/null
+	#notify-send "All set up"
+}
+
+### HANDLE COMMANDS ###
+
+if declare -f "${1}__$2" >/dev/null; then
+	func="${1}__$2"
+	shift; shift    # pop $1 and $2 off the argument list
+	"$func" "$@"    # invoke our named function w/ all remaining arguments
+elif declare -f "$1" >/dev/null 2>&1; then
+#if declare -f "$1" >/dev/null 2>&1; then
+	"$@"
+elif [[ $1 = '' ]]; then
+	help >&2
+	exit 0
+else
+	#printf "Neither function $1 nor subcommand ${1}__$2 recognized\\n" >&2
+	printf "dev: '$1' is not a dev command. See 'dev --help'.\\n" >&2
+	exit 1
+fi
+
