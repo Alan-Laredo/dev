@@ -65,6 +65,33 @@ to read about a specific subcommand or concept.\\n
 "
 }
 
+new() {
+
+	# DEFAULTS
+	PRINT=false
+
+	# FLAGS
+	while true; do case "$1" in
+		-o | --organization) ORGANIZATION=$2; shift 2 ;;
+		-n | --name) NAME=$2; shift 2 ;;
+		*) break ;;
+	esac done
+
+	# prompts to select a organization from Development folder
+	if [[ -z $ORGANIZATION ]]; then
+		organizations || error "unable to get organizations from $DEV_DIR"
+		choseorganization || error "unable to set $CHOSEN as organization" "1"
+	fi
+
+	# prompts to set project name from dmenu
+	if [[ -z $NAME ]]; then
+		NAME=$(echo "" | dmenu -p 'Project name:')
+	fi
+
+	mkdir "${ORGANIZATION}/${NAME}" || error "unable to create project" "1"
+
+}
+
 choseproject() {
 
 	# DEFAULTS
@@ -97,6 +124,39 @@ projects() {
 		-type d -printf '%d%p\n' | grep -v "$DEV_MIN" | sed "s/$DEV_MAX//")
 	[[ $PROJECTS = '' ]] && return 1
 	[[ "$PRINT" = true ]] && printf "$PROJECTS\\n" || return 0
+}
+
+choseorganization() {
+
+	# DEFAULTS
+	ORGANIZATION=""
+
+	SELECTED="$(ask "chose organization" "$(echo "$ORGANIZATIONS" | sed "s,$DEV_DIR,,g")")"
+	ORGANIZATION="${DEV_DIR}${SELECTED}"
+}
+
+## ORGANIZATIONS ##
+organizations() {
+
+	# DEFAULTS
+	PRINT=false
+	MIN_DEPTH=1
+	MAX_DEPTH=1
+
+	# FLAGS
+	while true; do case "$1" in
+		-d | --directory) DEV_DIR=$2; shift 2 ;;
+		-m | --min) MIN_DEPTH=$2; shift 2 ;;
+		-M | --max) MAX_DEPTH=$2; shift 2 ;;
+		-p | --print) PRINT=true; shift ;;
+		*) break ;;
+	esac done
+
+	ORGANIZATIONS=$(find "$DEV_DIR" \
+		-mindepth "$MIN_DEPTH" -maxdepth "$MAX_DEPTH" \
+		-type d -printf '%d%p\n' | sed "s/$MAX_DEPTH//")
+	[[ $ORGANIZATIONS = '' ]] && return 1
+	[[ "$PRINT" = true ]] && printf "$ORGANIZATIONS\\n" || return 0
 }
 
 terminals() {
